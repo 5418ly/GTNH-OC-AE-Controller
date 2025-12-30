@@ -1,33 +1,90 @@
+import React from 'react';
 import PropTypes from "prop-types";
-import "./AeCpuCard.css"
+import { Card, Typography, Tag, Tooltip, Button, Space, theme } from 'antd';
+import { SyncOutlined, DeleteOutlined, DatabaseOutlined, ClusterOutlined } from '@ant-design/icons';
 
-function AeCpuCardLine({lineKey, value}) {
+const { Text } = Typography;
+
+export default function AeCpuCard({ onClick, cpu, onRefresh, onDelete }) {
+    const { token } = theme.useToken();
+    
+    // Determine status styling
+    const isBusy = cpu.busy;
+    const statusColor = isBusy ? "processing" : "success";
+    const statusText = isBusy ? "运行中" : "空闲";
+
+    // Handle card click (select)
+    const handleCardClick = () => {
+        if (onClick) onClick(cpu.id);
+    };
+
+    // Prevent bubbling for actions
+    const handleAction = (e, action) => {
+        e.stopPropagation();
+        action();
+    };
+
     return (
-        <div className={"ae-cpu-card-line"}>
-            <span>{lineKey}</span>
-            <span>{value}</span>
-        </div>
-    )
-}
-
-export default function AeCpuCard({onClick, cpu, onRefresh, onDelete}) {
-    return (
-        <div className={"ae-cpu-card " + (cpu.busy ? "ae-cpu-card-busy" : "") } onClick={event => onClick(cpu.id)}>
-            <div className={"ae-cpu-card-tool-bar"}>
-                <span title={"删除"} className={"ae-cpu-card-tool-bar-delete"} onClick={event => onDelete(cpu)}>X</span>
-            </div>
-            <h2 className={"ae-cpu-card-name"} title={cpu.id}>{cpu.id}</h2>
-            <AeCpuCardLine lineKey="容量:" value={(cpu.storage / 1024) + "K"}></AeCpuCardLine>
-            <AeCpuCardLine lineKey="并行:" value={cpu.coprocessors}></AeCpuCardLine>
-            <h3 className={"ae-cpu-card-status"}>{cpu.busy ? "运行中" : "空闲中"}</h3>
-            <span className={"ae-cpu-card-refresh"} onClick={event => onRefresh(cpu.id)}>刷新状态</span>
-        </div>
-    )
-}
-
-AeCpuCardLine.propTypes = {
-    lineKey: PropTypes.string,
-    value: PropTypes.any
+        <Card
+            hoverable
+            onClick={handleCardClick}
+            size="small"
+            style={{ 
+                width: 200, 
+                borderColor: isBusy ? token.colorPrimary : undefined,
+                borderWidth: isBusy ? 2 : 1
+            }}
+            title={
+                <Tooltip title={cpu.id}>
+                    <div style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap' 
+                    }}>
+                        {cpu.id}
+                    </div>
+                </Tooltip>
+            }
+            extra={
+                <Tag color={statusColor}>{statusText}</Tag>
+            }
+            actions={[
+                <Tooltip title="刷新状态" key="refresh">
+                    <Button 
+                        type="text" 
+                        icon={<SyncOutlined spin={isBusy} />} 
+                        onClick={(e) => handleAction(e, () => onRefresh(cpu.id))} 
+                    />
+                </Tooltip>,
+                <Tooltip title="删除 CPU" key="delete">
+                    <Button 
+                        type="text" 
+                        danger 
+                        icon={<DeleteOutlined />} 
+                        onClick={(e) => handleAction(e, () => onDelete(cpu))} 
+                    />
+                </Tooltip>
+            ]}
+        >
+            <Space direction="vertical" style={{ width: '100%' }} size={4}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Space size={4} style={{ color: token.colorTextSecondary }}>
+                        <DatabaseOutlined />
+                        <Text type="secondary" style={{ fontSize: 12 }}>容量</Text>
+                    </Space>
+                    <Text strong>{(cpu.storage / 1024).toFixed(0)} K</Text>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Space size={4} style={{ color: token.colorTextSecondary }}>
+                        <ClusterOutlined />
+                        <Text type="secondary" style={{ fontSize: 12 }}>并行</Text>
+                    </Space>
+                    <Text strong>{cpu.coprocessors}</Text>
+                </div>
+            </Space>
+        </Card>
+    );
 }
 
 AeCpuCard.propTypes = {

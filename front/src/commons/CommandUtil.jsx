@@ -15,7 +15,16 @@ function clearLastestTimestamp() {
 export default {
     submitCommand: (command, bodyData, callback) => {
         if (command == null || command === "") return
-        const json = JSON.parse(bodyData)
+        let json = bodyData;
+        if (typeof bodyData === 'string') {
+            try {
+                json = JSON.parse(bodyData)
+            } catch (e) {
+                console.error("Invalid JSON string passed to submitCommand", e)
+                return
+            }
+        }
+        
         const promiss = HttpUtil.put(HttpUtil.path.task, {
             method: command,
             data: json
