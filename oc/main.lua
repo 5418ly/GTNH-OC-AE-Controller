@@ -9,67 +9,83 @@ local config = require("config")
 local tasks = {}
 local monitors = {}
 
-function tasks.refreshStorage(data)
-    -- data 是物品过滤表
-    local item = me.getItemsInNetwork(data)
-    local result = {}
+-- Helper function for chunked uploads
+local function uploadChunks(path, list, mapper)
+    -- 1. Clear old data
+    local _, code = http.delete(path)
+    if code ~= 200 then
+        print("Error clearing data at " .. path .. ": " .. tostring(code))
+    end
 
-    for _, j in pairs(item) do
-        table.insert(result, {
+    local batch = {}
+    local batchSize = 50 -- Safe chunk size
+    local count = 0
+
+    for _, item in pairs(list) do
+        local mapped = mapper(item)
+        if mapped then
+            table.insert(batch, mapped)
+            count = count + 1
+        end
+
+        if count >= batchSize then
+            local _, pCode = http.post(path .. "/batch", {}, batch)
+            if pCode ~= 200 then
+                print("Failed to upload batch to " .. path)
+            end
+            batch = {}
+            count = 0
+            os.sleep(0) -- Yield to prevent "too long without yielding"
+        end
+    end
+
+    if count > 0 then
+        local _, pCode = http.post(path .. "/batch", {}, batch)
+        if pCode ~= 200 then
+            print("Failed to upload final batch to " .. path)
+        end
+    end
+end
+
+function tasks.refreshStorage(data)
+    local items = me.getItemsInNetwork(data)
+    uploadChunks(config.path.items, items, function(j)
+        return {
             name = j.name,
             label = j.label,
             isCraftable = j.isCraftable,
             damage = j.damage,
             size = j.size,
             aspect = j.aspect
-        })
-    end
-
-    http.put(config.path.items, {}, {result = result})
+        }
+    end)
 end
 
 function tasks.refreshFluidStorage(_)
-    -- 刷新流体库存，因为无法筛选，有内存溢出情况
     local fluids = me.getFluidsInNetwork()
-    local result = {}
-
-    for _, j in pairs(fluids) do
-        table.insert(result, {
+    uploadChunks(config.path.fluids, fluids, function(j)
+        return {
             name = j.name,
             label = j.label,
             isCraftable = j.isCraftable,
             amount = j.amount
-        })
-    end
-
-    http.put(config.path.fluids, {}, {result = result})
+        }
+    end)
 end
 
 function tasks.refreshEssentiaStorage(_)
-    -- 刷新原质库存（因为无法筛选，有内存溢出情况）
-    local fluids = me.getEssentiaInNetwork()
-    local result = {}
-
-    for _, j in pairs(fluids) do
-        table.insert(result, {
+    local essentia = me.getEssentiaInNetwork()
+    uploadChunks(config.path.essentia, essentia, function(j)
+        return {
             name = j.name,
             label = j.label,
             amount = j.amount,
             aspect = j.aspect
-        })
-    end
-
-    http.put(config.path.essentia, {}, {result = result})
+        }
+    end)
 end
 
 function tasks.requestItem(data)
-    -- 请求制作物品，参数格式:
-    --     data = {
-    --         filter = {},
-    --         amount = 1,
-    --         prioritizePower = true,
-    --         cpuName = "cpu1"
-    --     }
     if data.filter == nil then data.filter = {} end
 
     local craftable = me.getCraftables(data.filter)[1]
@@ -100,55 +116,42 @@ function tasks.requestItem(data)
 end
 
 function tasks.simpleCpusInfo(_)
-    -- 获取所有cpu的简单信息
     local list = meCpu.getCpuList(false)
-    for _, cpu in pairs(list) do
-        if cpu.id ~= nil and cpu.id ~= "" then
-            local _, code = http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-            if code ~= 200 then
-                http.post(config.path.cpu, {}, cpu)
-            end
-        end
+    local _, code = http.post(config.path.cpu .. "/batch", {}, list)
+    if code ~= 200 then
+        print("Failed to upload simple cpu info: " .. tostring(code))
     end
 end
 
 function tasks.allCpusInfo(_)
-    -- 获取所有cpu的详细信息
     local list = meCpu.getCpuList(true)
-    for _, cpu in pairs(list) do
-        if cpu.id ~= nil and cpu.id ~= "" then
-            local _, code = http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-            if code ~= 200 then
-                http.post(config.path.cpu, {}, cpu)
-            end
-        end
+    local _, code = http.post(config.path.cpu .. "/batch", {}, list)
+    if code ~= 200 then
+        print("Failed to upload all cpu info: " .. tostring(code))
     end
 end
 
 function tasks.cpuDetail(data)
-    -- 获取cpu的详细信息
-    -- data.id: cpu 的ID
     if data.id == nil then return "没有提供 CPU 名称" end
     local details = meCpu.getCpuDetail(data.id)
     if details == nil then return "获取 " .. data.id .. " 的信息失败！" end
-    http.put(config.path.cpu .. "/" .. data.id, {}, details)
+    local _, code = http.post(config.path.cpu .. "/batch", {}, {details})
+    if code ~= 200 then
+        return "上传 CPU 详情失败: " .. tostring(code)
+    end
 end
 
-
 function tasks.cancelMonitor(data)
-    -- data.id 要取消的监控的id
     monitors[data.id] = nil
 end
 
 function tasks.monitors(_)
-    -- data.id 要取消的监控的id
     local m = {}
     for key in pairs(monitors) do table.insert(m, key) end
     return "current monitors", {monitors = m}
 end
 
 function tasks.cpuMonitor(_)
-    -- 添加cpu监控器，直到无cpu运行时移除
     monitors.cpuMonitor = {
         data = {},
         func = function(data)
@@ -165,7 +168,6 @@ function tasks.cpuMonitor(_)
             if not busy then monitors.cpuMonitor = nil end
         end
     }
-
 end
 
 http.init(config.baseUrl, tasks)

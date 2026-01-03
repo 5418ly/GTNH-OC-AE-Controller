@@ -6,7 +6,7 @@ local NEED_DOWNLOAD = {
     ["main"] = "https://ocae.smileyik.eu.org/oc/main.lua"
 }
 
-local function checkInternetCard()
+local function checkInternetCard() 
     -- check internet card
     local component = require("component")
     if component == nil or component.internet == nil then
@@ -48,10 +48,18 @@ for filePath, url in pairs(NEED_DOWNLOAD) do
         os.execute("mkdir " .. parentDir)
         createdDirs[parentDir] = true
     end
-    os.execute("wget " .. url .. " " .. targetFile)
+    print("Downloading " .. filePath .. " ...")
+    os.execute("wget -f " .. url .. " " .. targetFile)
 end
 
 
 print("create a quick link to /home directory")
-os.execute("echo \"os.execute(\\\"cd '" .. targetDirectory .. "' && ./main.lua\\\")\" > /home/oc-ae.lua")
-print("install finished")
+os.execute("echo \"os.execute(\"cd '" .. targetDirectory .. "' && ./main.lua\")\" > /home/oc-ae.lua")
+
+print("\n---------------------------------------------------")
+print("INSTALLATION FINISHED")
+print("---------------------------------------------------")
+print("IMPORTANT: You MUST edit config.lua before running!")
+print("Ensure 'path' entries point to /api/v2/... endpoints")
+print("and set your 'baseUrl' and 'token'.")
+print("---------------------------------------------------")

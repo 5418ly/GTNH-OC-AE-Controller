@@ -41,12 +41,12 @@ export default function EssentiaPage() {
             
             const headers = lastModified && lastModified !== "" ? { "If-Modified-Since": lastModified } : {};
             
-            httpUtil.get(httpUtil.path.essentia, headers)
+            httpUtil.get(httpUtil.path.essentia + "?size=20000", headers)
                 .then(async response => {
                     if (response.status === 200) {
                         const r = await response.json();
-                        if (r.result) {
-                            setItems(r.result);
+                        if (r.content) {
+                            setItems(r.content);
                         }
                         setLastModified(response.headers.get("last-modified"));
                     }
@@ -131,7 +131,7 @@ export default function EssentiaPage() {
             title: '确认清理',
             content: '确定要清理所有源质缓存吗？',
             onOk: () => {
-                httpUtil.put(httpUtil.path.essentia, { "result": [] }).then(() => {
+                httpUtil.delete(httpUtil.path.essentia).then(() => {
                     message.success("已清理");
                     setItems([]);
                 });

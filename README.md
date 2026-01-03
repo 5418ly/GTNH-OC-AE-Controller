@@ -1,59 +1,80 @@
-# OC-AE
+# OC-AE Controller
 
-该程序能够在 GTNH 原版包中实现网页端控制AE网络中物品的合成以及查看网络中的物品和流体。
+Based on GTNH (GregTech New Horizons), this external control system allows remote monitoring and management of Applied Energistics 2 (AE2) networks via a Web interface.
 
-目前实现的功能有：
+It utilizes OpenComputers (OC) as the bridge between the game and the external network.
 
-* 搜寻网络中的物品
-* 获取网络中所有流体
-* 获取网络中所有源质
-* 获取网络中所有 CPU 信息
-* 请求网络制作指定物品
-* 监控 CPU 工作状态直至 CPU 空闲
+## Features
 
-### 仓库目录结构
+* **Item Search**: Browse all items in your AE network.
+* **Fluid/Essentia Monitoring**: View all fluids and Thaumcraft essentia.
+* **CPU Management**: Monitor Crafting CPU status and view active crafting jobs.
+* **Crafting Requests**: Request item crafting directly from the web interface.
+* **Smart Sync**: Optimized data transmission to prevent OpenComputers OOM (Out Of Memory) errors, supporting huge networks with thousands of items.
 
-* `oc`: 为oc程序
-* `front`: 为前端控制面板
-* `backend`: 为后端
+## Architecture
 
-### 如何使用
+* **Frontend**: React + Vite + Ant Design.
+* **Backend**: Java (Spring Boot 3) + H2 Database (Embedded).
+* **OC Script**: Lua scripts running on OpenComputers.
 
+## Installation & Setup
 
-在游戏中需要运行着 [oc](./oc) 程序的机器一台。
+### 1. Backend
 
-可依据自己需求搭建前端页面，也可以进 [在线体验](https://blog.smileyik.eu.org/oc-ae/) 链接，并填入自己的后端地址（若后端有密钥验证则需要输入密钥信息）进行使用。
+The backend now uses an embedded H2 database. No external database setup is required.
 
-#### 为OC电脑安装程序
+1. Navigate to `backend/simple-backend`.
+2. Build and run:
+   ```bash
+   ./gradlew build
+   java -jar build/libs/simple-backend-0.0.2-SNAPSHOT.jar
+   ```
+   (Or use your IDE to run `SimpleBackendApplication`)
 
-安装程序可选自行复制lua代码至机器中，或者使用安装脚本进行安装，详细见 [oc页面](./oc/README.MD)，安装完后在oc电脑中 edit ./oc-ae/config.lua 中的配置。
+### 2. OpenComputers (In-Game)
 
-#### 搭建后端程序
+1. Craft an OpenComputer (Tier 3 recommended) with an Internet Card and an Adapter/Interface connected to your AE network.
+2. Install the scripts. You can use the `installer.lua` (requires `wget`) or copy files manually from the `oc/` directory.
+   * `config.lua`
+   * `main.lua`
+   * `http-method.lua`
+   * `json.lua`
+   * `cpu.lua`
+3. **Configuration**: Edit `config.lua` in-game:
+   ```lua
+   return {
+       sleep = 10,
+       token = "your_secret_token",
+       baseUrl = "http://<your-backend-ip>:8080",
+       path = {
+           task = "/task",
+           cpu = "/api/v2/cpus",
+           essentia = "/api/v2/essentia",
+           fluids = "/api/v2/fluids",
+           items = "/api/v2/items"
+       }
+   }
+   ```
+   *Note: The paths must point to the new V2 API endpoints as shown above.*
 
-##### 自己手动搭建
+4. Run `main` to start the client.
 
-后端程序需要搭建在一台GTNH游戏服务器能够访问到的机器上。详细请到 [backend](./backend) 目录查看。
+### 3. Frontend
 
-##### 使用分享服务器
+1. Navigate to `front/`.
+2. Install dependencies: `npm install`.
+3. Build or run dev server:
+   ```bash
+   npm run dev
+   # or
+   npm run build
+   ```
+4. Open the web page. Go to **Config** page to set your Backend URL and Token.
 
-**!!! 请珍惜他人分享的后端服务器，拒绝滥用，合理使用。正是因为他人的无私分享，才能降低各位GTNH员工将自己的AE网络接入互联网的成本！ !!!**
+## Recent Updates
 
-**此外，非常感谢那些分享服务器的员工！**
-
-如果你不想自己搭建一个自己的后端，可以进 [在线体验](https://blog.smileyik.eu.org/oc-ae/) 网站，进入 `Apply` 页面，申领一个网络空间地址。
-可以选择现有的分享服务器，也可以自行输入一个分享服务器，申领成功后会显示出你的后端地址以及验证凭据，如图所示：
-
-![申领成功](./docs/3.png)
-
-请妥善保存申领到的后端地址及验证凭据，之后进入 Config 页面，在 基础URL 框中填入后端地址，Token 栏中填入验证凭据，如图所示：
-
-![填入配置](./docs/4.png)
-
-然后进入游戏中，按照相同的逻辑去修改 config.lua 文件。
-
-若忘记了你申领到的地址和凭据，再次进入 `Apply` 页面中，会显示你上一次获取到的后端地址与验证凭据。
-
-### 效果展示
-
-![cpus](./docs/1.png)
-![items](./docs/2.png)
+* **OOM Fix**: Implemented chunked data upload. The OC script now sends data in small batches to prevent memory overflow in large networks.
+* **Database Migration**: Moved from file-based JSON storage to H2 Database for better performance and reliability.
+* **V2 API**: New REST API endpoints supporting batch operations and pagination.
+* **CPU Flickering Fix**: Improved CPU status synchronization to prevent detailed information from disappearing during updates.

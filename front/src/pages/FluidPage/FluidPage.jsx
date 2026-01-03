@@ -41,12 +41,12 @@ export default function FluidPage() {
             
             const headers = lastModified && lastModified !== "" ? { "If-Modified-Since": lastModified } : {};
             
-            httpUtil.get(httpUtil.path.fluids, headers)
+            httpUtil.get(httpUtil.path.fluids + "?size=20000", headers)
                 .then(async response => {
                     if (response.status === 200) {
                         const r = await response.json();
-                        if (r.result) {
-                            setItems(r.result);
+                        if (r.content) {
+                            setItems(r.content);
                         }
                         setLastModified(response.headers.get("last-modified"));
                     }
@@ -130,7 +130,7 @@ export default function FluidPage() {
             title: '确认清理',
             content: '确定要清理所有流体缓存吗？',
             onOk: () => {
-                httpUtil.put(httpUtil.path.fluids, { "result": [] }).then(() => {
+                httpUtil.delete(httpUtil.path.fluids).then(() => {
                     message.success("已清理");
                     setItems([]);
                 });

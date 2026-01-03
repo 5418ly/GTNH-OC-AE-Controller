@@ -41,12 +41,12 @@ export default function ItemsPage() {
             
             const headers = lastModified && lastModified !== "" ? { "If-Modified-Since": lastModified } : {};
             
-            httpUtil.get(httpUtil.path.items, headers)
+            httpUtil.get(httpUtil.path.items + "?size=20000", headers)
                 .then(async response => {
                     if (response.status === 200) {
                         const r = await response.json();
-                        if (r.result) {
-                            setItems(r.result);
+                        if (r.content) {
+                            setItems(r.content);
                         }
                         setLastModified(response.headers.get("last-modified"));
                     }
@@ -134,7 +134,7 @@ export default function ItemsPage() {
             title: '确认清理',
             content: '确定要清理所有物品缓存吗？',
             onOk: () => {
-                httpUtil.put(httpUtil.path.items, { "result": [] }).then(() => {
+                httpUtil.delete(httpUtil.path.items).then(() => {
                     message.success("已清理");
                     setItems([]);
                 });

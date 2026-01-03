@@ -39,10 +39,10 @@ function getDefault() {
 export default {
     path: {
         task: "/task",
-        items: "/items",
+        items: "/api/v2/items",
         cpus: "/cpus",
-        fluids: "/fluids",
-        essentia: "/essentia"
+        fluids: "/api/v2/fluids",
+        essentia: "/api/v2/essentia"
     },
     addGlobalHeader: (key, val) => {
         headers[key] = val
