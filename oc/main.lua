@@ -11,10 +11,10 @@ local monitors = {}
 
 -- Helper function for chunked uploads
 local function uploadChunks(path, list, mapper)
-    -- 1. Clear old data
-    local _, code = http.delete(path)
+    -- 1. Clear temp data
+    local _, code = http.delete(path .. "/temp")
     if code ~= 200 then
-        print("Error clearing data at " .. path .. ": " .. tostring(code))
+        print("Error clearing temp data at " .. path .. ": " .. tostring(code))
     end
 
     local batch = {}
@@ -44,6 +44,12 @@ local function uploadChunks(path, list, mapper)
         if pCode ~= 200 then
             print("Failed to upload final batch to " .. path)
         end
+    end
+
+    -- 2. Commit transaction
+    local _, cCode = http.post(path .. "/commit", {})
+    if cCode ~= 200 then
+        print("Failed to commit data at " .. path .. ": " .. tostring(cCode))
     end
 end
 
