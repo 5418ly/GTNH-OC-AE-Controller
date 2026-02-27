@@ -78,7 +78,9 @@ export default function EssentiaPage() {
             .then(async resp => {
                 if (resp.status === 200) {
                     const data = await resp.json();
-                    setCpus(data);
+                    // 支持对象格式和数组格式
+                    const cpusArray = Array.isArray(data) ? data : Object.values(data || {});
+                    setCpus(cpusArray);
                 }
             })
             .finally(() => setLoadingCpus(false));
@@ -140,10 +142,7 @@ export default function EssentiaPage() {
     };
 
     const handleRefreshStorage = () => {
-        httpUtil.put(httpUtil.path.task, {
-            "method": "refreshEssentiaStorage",
-            "data": {}
-        }).then(() => {
+        CommandUtil.submitCommand("refreshEssentiaStorage", {}, () => {
             message.info("已发送搜寻源质请求");
         });
     };

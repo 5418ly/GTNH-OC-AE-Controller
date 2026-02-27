@@ -319,7 +319,6 @@ end
 
 function tasks.simpleCpusInfo(_)
     log("simpleCpusInfo", "开始执行")
-    log("simpleCpusInfo", "config.path.cpu = " .. tostring(config.path.cpu))
     
     -- 获取所有 CPU 的简要信息
     local ok, list = pcall(function() return meCpu.getCpuList(false) end)
@@ -336,26 +335,13 @@ function tasks.simpleCpusInfo(_)
     end
     
     for _, cpu in pairs(list) do
-        log("simpleCpusInfo", "CPU: id=" .. tostring(cpu.id) .. ", busy=" .. tostring(cpu.busy) .. ", storage=" .. tostring(cpu.storage))
-        
         if cpu.id == nil or cpu.id == "" then
             logError("simpleCpusInfo", "CPU id 为空，跳过")
         else
-            -- 构建完整的 URL
             local url = config.path.cpu .. "/" .. cpu.id
-            log("simpleCpusInfo", "准备发送 PUT 请求到: " .. url)
-            
-            -- 发送请求
-            local putOk, putResult = pcall(function() 
-                local reply, code = http.put(url, {}, cpu)
-                log("simpleCpusInfo", "PUT " .. url .. " 返回: code=" .. tostring(code))
-                return reply, code
-            end)
-            
+            local putOk, putResult = pcall(function() return http.put(url, {}, cpu) end)
             if not putOk then
                 logError("simpleCpusInfo", "更新CPU " .. tostring(cpu.id) .. " 失败: " .. tostring(putResult))
-            else
-                log("simpleCpusInfo", "更新CPU " .. tostring(cpu.id) .. " 成功")
             end
         end
     end
@@ -585,15 +571,6 @@ tasks.smartCpuMonitor({interval = 2})
 
 -- 启动时立即发送一次 CPU 信息
 log("INIT", "发送初始 CPU 信息...")
-
--- 先测试 HTTP PUT 是否正常工作
-log("INIT", "测试 HTTP PUT 到 /cpus/test...")
-local testOk, testReply, testCode = pcall(function() 
-    return http.put("/cpus/test", {}, {id = "test", busy = false, storage = 0}) 
-end)
-log("INIT", "HTTP PUT 测试结果: ok=" .. tostring(testOk) .. ", code=" .. tostring(testCode))
-
--- 然后发送真正的 CPU 信息
 local initOk, initErr = pcall(function() tasks.simpleCpusInfo({}) end)
 if not initOk then
     logError("INIT", "发送初始 CPU 信息失败: " .. tostring(initErr))
@@ -602,26 +579,6 @@ end
 log("INIT", "OC-AE 控制器已启动")
 log("INIT", "配置: sleep=" .. config.sleep .. "s, baseUrl=" .. config.baseUrl)
 log("INIT", "内存: " .. math.floor(computer.freeMemory() / 1024) .. "KB / " .. math.floor(computer.totalMemory() / 1024) .. "KB")
-
--- 测试 ME 接口连接
-local ok, result = pcall(function() return me.getItemsInNetwork({}) end)
-if ok then
-    local count = 0
-    if result then
-        for _ in pairs(result) do count = count + 1 end
-    end
-    log("INIT", "ME 接口测试成功, 物品数: " .. count)
-else
-    logError("INIT", "ME 接口测试失败: " .. tostring(result))
-end
-
--- 测试 CPU 获取
-local ok2, cpus = pcall(function() return meCpu.getCpuList(false) end)
-if ok2 then
-    log("INIT", "CPU 列表测试成功, CPU数: " .. (cpus and #cpus or 0))
-else
-    logError("INIT", "CPU 列表测试失败: " .. tostring(cpus))
-end
 
 while true do
     -- 执行所有监控器
