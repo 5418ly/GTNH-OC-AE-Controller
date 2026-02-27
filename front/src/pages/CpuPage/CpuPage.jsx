@@ -42,14 +42,28 @@ function deepEqualCpu(a, b) {
     return true;
 }
 
+// 将对象格式的 CPU 数据转换为数组
+function cpusObjectToArray(data) {
+    if (Array.isArray(data)) {
+        return data;
+    }
+    if (typeof data === 'object' && data !== null) {
+        return Object.values(data);
+    }
+    return [];
+}
+
 // 智能合并 CPU 列表，只在数据真正变化时返回新数组
 // 同时处理去重逻辑
 function mergeCpus(prevCpus, newCpus) {
-    if (!newCpus || newCpus.length === 0) return prevCpus;
+    // 将对象格式转换为数组
+    const newCpusArray = cpusObjectToArray(newCpus);
+    
+    if (!newCpusArray || newCpusArray.length === 0) return prevCpus;
     
     // 对新数据按 id 去重（防止后端有重复数据）
     const newCpusMap = new Map();
-    for (const cpu of newCpus) {
+    for (const cpu of newCpusArray) {
         if (cpu && cpu.id) {
             // 如果已存在同 id 的 CPU，保留信息更完整的那个
             const existing = newCpusMap.get(cpu.id);
@@ -213,8 +227,10 @@ export default function CpuPage() {
                 const resp = await httpUtil.get(httpUtil.path.cpus);
                 if (resp.status === 200) {
                     const data = await resp.json();
-                    setCpus(data);
-                    cpusRef.current = data;
+                    // 将对象格式转换为数组
+                    const cpusArray = cpusObjectToArray(data);
+                    setCpus(cpusArray);
+                    cpusRef.current = cpusArray;
                 }
             } catch (error) {
                 console.error("Init fetch failed:", error);

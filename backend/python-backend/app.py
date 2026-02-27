@@ -31,7 +31,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 # 数据存储
 data_store = {
     'items': {'type': 'object', 'data': {}, 'file': 'items.json'},
-    'cpus': {'type': 'array', 'data': [], 'file': 'cpus.json'},
+    'cpus': {'type': 'object', 'data': {}, 'file': 'cpus.json'},  # 改为 object，用 CPU 名称作为 key
     'task': {'type': 'object', 'data': {}, 'file': 'task.json'},
     'fluids': {'type': 'object', 'data': {}, 'file': 'fluids.json'},
     'essentia': {'type': 'object', 'data': {}, 'file': 'essentia.json'},
@@ -180,103 +180,57 @@ def delete_endpoint(endpoint):
     return jsonify(result)
 
 # ============================================
-# 带ID的路由（Array 类型）
+# CPU 路由 - 使用 object 存储，CPU 名称作为 key
 # ============================================
 
-@app.route('/<path:endpoint>/<item_id>', methods=['GET'])
-def get_item(endpoint, item_id):
-    """获取单个元素"""
-    endpoint = endpoint.strip('/')
+@app.route('/cpus/<path:cpu_id>', methods=['GET'])
+def get_cpu(cpu_id):
+    """获取单个 CPU"""
+    store = data_store['cpus']
     
-    if endpoint not in data_store:
-        return jsonify({'error': 'Not found'}), 404
+    if cpu_id in store['data']:
+        logger.info(f"GET /cpus/{cpu_id} - found")
+        return jsonify(store['data'][cpu_id])
     
-    store = data_store[endpoint]
-    
-    if store['type'] != 'array':
-        return jsonify({'error': 'Method not allowed for object type'}), 405
-    
-    # 通过 id 字段查找
-    for item in store['data']:
-        if isinstance(item, dict) and str(item.get('id', '')) == item_id:
-            logger.info(f"GET /{endpoint}/{item_id} - found")
-            return jsonify(item)
-    
-    # 尝试通过索引查找
-    try:
-        idx = int(item_id)
-        if 0 <= idx < len(store['data']):
-            return jsonify(store['data'][idx])
-    except ValueError:
-        pass
-    
-    logger.info(f"GET /{endpoint}/{item_id} - not found")
-    return jsonify({'error': 'Item not found'}), 404
+    logger.info(f"GET /cpus/{cpu_id} - not found")
+    return jsonify({'error': 'CPU not found'}), 404
 
-@app.route('/<path:endpoint>/<item_id>', methods=['PUT'])
-def put_item(endpoint, item_id):
-    """更新或创建单个元素（Array 类型）"""
-    endpoint = endpoint.strip('/')
-    
-    if endpoint not in data_store:
-        return jsonify({'error': 'Not found'}), 404
-    
+@app.route('/cpus/<path:cpu_id>', methods=['PUT'])
+def put_cpu(cpu_id):
+    """更新或创建单个 CPU"""
     if not check_token():
         return jsonify({'error': 'Unauthorized'}), 401
     
-    store = data_store[endpoint]
-    
-    if store['type'] != 'array':
-        return jsonify({'error': 'Method not allowed for object type'}), 405
-    
+    store = data_store['cpus']
     data = request.get_json()
     
     # 确保 id 字段存在
     if 'id' not in data:
-        data['id'] = item_id
+        data['id'] = cpu_id
     
-    logger.info(f"PUT /{endpoint}/{item_id} - id: {data.get('id')}, busy: {data.get('busy')}")
+    is_new = cpu_id not in store['data']
+    store['data'][cpu_id] = data
+    save_data('cpus')
     
-    # 查找现有元素
-    for i, item in enumerate(store['data']):
-        if isinstance(item, dict) and str(item.get('id', '')) == item_id:
-            store['data'][i] = data
-            save_data(endpoint)
-            logger.info(f"PUT /{endpoint}/{item_id} - updated at index {i}")
-            return jsonify(data)
-    
-    # 没找到，创建新元素
-    store['data'].append(data)
-    save_data(endpoint)
-    logger.info(f"PUT /{endpoint}/{item_id} - created new, array size: {len(store['data'])}")
+    logger.info(f"PUT /cpus/{cpu_id} - id: {data.get('id')}, busy: {data.get('busy')}, new: {is_new}, total cpus: {len(store['data'])}")
     return jsonify(data)
 
-@app.route('/<path:endpoint>/<item_id>', methods=['DELETE'])
-def delete_item(endpoint, item_id):
-    """删除单个元素（Array 类型）"""
-    endpoint = endpoint.strip('/')
-    
-    if endpoint not in data_store:
-        return jsonify({'error': 'Not found'}), 404
-    
+@app.route('/cpus/<path:cpu_id>', methods=['DELETE'])
+def delete_cpu(cpu_id):
+    """删除单个 CPU"""
     if not check_token():
         return jsonify({'error': 'Unauthorized'}), 401
     
-    store = data_store[endpoint]
+    store = data_store['cpus']
     
-    if store['type'] != 'array':
-        return jsonify({'error': 'Method not allowed for object type'}), 405
+    if cpu_id in store['data']:
+        result = store['data'].pop(cpu_id)
+        save_data('cpus')
+        logger.info(f"DELETE /cpus/{cpu_id} - deleted")
+        return jsonify(result)
     
-    # 查找并删除
-    for i, item in enumerate(store['data']):
-        if isinstance(item, dict) and str(item.get('id', '')) == item_id:
-            result = store['data'].pop(i)
-            save_data(endpoint)
-            logger.info(f"DELETE /{endpoint}/{item_id} - deleted")
-            return jsonify(result)
-    
-    logger.info(f"DELETE /{endpoint}/{item_id} - not found")
-    return jsonify({'error': 'Item not found'}), 404
+    logger.info(f"DELETE /cpus/{cpu_id} - not found")
+    return jsonify({'error': 'CPU not found'}), 404
 
 # ============================================
 # 分批处理（Object 类型）

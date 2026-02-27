@@ -319,6 +319,7 @@ end
 
 function tasks.simpleCpusInfo(_)
     log("simpleCpusInfo", "开始执行")
+    log("simpleCpusInfo", "config.path.cpu = " .. tostring(config.path.cpu))
     
     -- 获取所有 CPU 的简要信息
     local ok, list = pcall(function() return meCpu.getCpuList(false) end)
@@ -329,13 +330,32 @@ function tasks.simpleCpusInfo(_)
     
     log("simpleCpusInfo", "获取到 " .. #list .. " 个CPU")
     
+    if #list == 0 then
+        log("simpleCpusInfo", "警告: CPU 列表为空，请检查 CPU 是否已用石英刀命名")
+        return "没有找到 CPU", {count = 0}
+    end
+    
     for _, cpu in pairs(list) do
-        log("simpleCpusInfo", "CPU: id=" .. tostring(cpu.id) .. ", busy=" .. tostring(cpu.busy))
-        if cpu.id ~= nil and cpu.id ~= "" then
-            -- 只使用 PUT 更新，不创建新记录
-            local putOk, putErr = pcall(function() http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu) end)
+        log("simpleCpusInfo", "CPU: id=" .. tostring(cpu.id) .. ", busy=" .. tostring(cpu.busy) .. ", storage=" .. tostring(cpu.storage))
+        
+        if cpu.id == nil or cpu.id == "" then
+            logError("simpleCpusInfo", "CPU id 为空，跳过")
+        else
+            -- 构建完整的 URL
+            local url = config.path.cpu .. "/" .. cpu.id
+            log("simpleCpusInfo", "准备发送 PUT 请求到: " .. url)
+            
+            -- 发送请求
+            local putOk, putResult = pcall(function() 
+                local reply, code = http.put(url, {}, cpu)
+                log("simpleCpusInfo", "PUT " .. url .. " 返回: code=" .. tostring(code))
+                return reply, code
+            end)
+            
             if not putOk then
-                logError("simpleCpusInfo", "更新CPU " .. tostring(cpu.id) .. " 失败: " .. tostring(putErr))
+                logError("simpleCpusInfo", "更新CPU " .. tostring(cpu.id) .. " 失败: " .. tostring(putResult))
+            else
+                log("simpleCpusInfo", "更新CPU " .. tostring(cpu.id) .. " 成功")
             end
         end
     end
@@ -565,6 +585,15 @@ tasks.smartCpuMonitor({interval = 2})
 
 -- 启动时立即发送一次 CPU 信息
 log("INIT", "发送初始 CPU 信息...")
+
+-- 先测试 HTTP PUT 是否正常工作
+log("INIT", "测试 HTTP PUT 到 /cpus/test...")
+local testOk, testReply, testCode = pcall(function() 
+    return http.put("/cpus/test", {}, {id = "test", busy = false, storage = 0}) 
+end)
+log("INIT", "HTTP PUT 测试结果: ok=" .. tostring(testOk) .. ", code=" .. tostring(testCode))
+
+-- 然后发送真正的 CPU 信息
 local initOk, initErr = pcall(function() tasks.simpleCpusInfo({}) end)
 if not initOk then
     logError("INIT", "发送初始 CPU 信息失败: " .. tostring(initErr))
