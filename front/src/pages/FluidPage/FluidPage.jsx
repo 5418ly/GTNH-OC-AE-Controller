@@ -78,7 +78,9 @@ export default function FluidPage() {
             .then(async resp => {
                 if (resp.status === 200) {
                     const data = await resp.json();
-                    setCpus(data);
+                    // 支持对象格式和数组格式
+                    const cpusArray = Array.isArray(data) ? data : Object.values(data || {});
+                    setCpus(cpusArray);
                 }
             })
             .finally(() => setLoadingCpus(false));
@@ -139,10 +141,7 @@ export default function FluidPage() {
     };
 
     const handleRefreshStorage = () => {
-        httpUtil.put(httpUtil.path.task, {
-            "method": "refreshFluidStorage",
-            "data": {}
-        }).then(() => {
+        CommandUtil.submitCommand("refreshFluidStorage", {}, () => {
             message.info("已发送搜寻流体请求");
         });
     };

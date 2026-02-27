@@ -215,28 +215,28 @@ export default function CpuPage() {
     // 初始化和定时刷新
     useEffect(() => {
         // 初始获取数据
-        const initFetch = async () => {
+        const initFetch = () => {
             setRefreshing(true);
-            try {
-                // 先触发后端更新
-                CommandUtil.submitCommand("simpleCpusInfo", {});
-                
+            // 先触发后端更新
+            CommandUtil.submitCommand("simpleCpusInfo", {}, async () => {
                 // 等待一小段时间让 OC 端处理
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
-                const resp = await httpUtil.get(httpUtil.path.cpus);
-                if (resp.status === 200) {
-                    const data = await resp.json();
-                    // 将对象格式转换为数组
-                    const cpusArray = cpusObjectToArray(data);
-                    setCpus(cpusArray);
-                    cpusRef.current = cpusArray;
+                try {
+                    const resp = await httpUtil.get(httpUtil.path.cpus);
+                    if (resp.status === 200) {
+                        const data = await resp.json();
+                        // 将对象格式转换为数组
+                        const cpusArray = cpusObjectToArray(data);
+                        setCpus(cpusArray);
+                        cpusRef.current = cpusArray;
+                    }
+                } catch (error) {
+                    console.error("Init fetch failed:", error);
+                } finally {
+                    setRefreshing(false);
                 }
-            } catch (error) {
-                console.error("Init fetch failed:", error);
-            } finally {
-                setRefreshing(false);
-            }
+            });
         };
         
         initFetch();
@@ -257,15 +257,12 @@ export default function CpuPage() {
         }
     }, [cpus, selectedCpu]);
 
-    const handleCommand = useCallback(async (method, data = {}, successMsg = "请求已发送") => {
-        try {
-            await httpUtil.put(httpUtil.path.task, { method, data });
+    const handleCommand = useCallback((method, data = {}, successMsg = "请求已发送") => {
+        CommandUtil.submitCommand(method, data, () => {
             message.info(successMsg);
             if (method === "cpuMonitor") setMonitoring(true);
             if (method === "cancelMonitor") setMonitoring(false);
-        } catch (error) {
-            message.error("请求失败");
-        }
+        });
     }, []);
 
     const handleDeleteCpu = useCallback((cpu) => {
@@ -288,37 +285,36 @@ export default function CpuPage() {
         });
     }, [selectedCpu]);
 
-    const handleRefreshDetail = useCallback(async (cpuId) => {
+    const handleRefreshDetail = useCallback((cpuId) => {
         setDetailLoading(true);
-        try {
-            await CommandUtil.submitCommand("cpuDetail", { id: cpuId });
+        CommandUtil.submitCommand("cpuDetail", { id: cpuId }, async () => {
             // 等待 OC 端处理
             await new Promise(resolve => setTimeout(resolve, 1000));
             // 重新获取数据
-            const resp = await httpUtil.get(httpUtil.path.cpus + "/" + cpuId);
-            if (resp.status === 200) {
-                const data = await resp.json();
-                setCpus(prev => prev.map(c => c.id === cpuId ? { ...c, ...data } : c));
-                if (selectedCpu?.id === cpuId) {
-                    setSelectedCpu(prev => ({ ...prev, ...data }));
+            try {
+                const resp = await httpUtil.get(httpUtil.path.cpus + "/" + cpuId);
+                if (resp.status === 200) {
+                    const data = await resp.json();
+                    setCpus(prev => prev.map(c => c.id === cpuId ? { ...c, ...data } : c));
+                    if (selectedCpu?.id === cpuId) {
+                        setSelectedCpu(prev => ({ ...prev, ...data }));
+                    }
+                    message.success("详情已刷新");
                 }
-                message.success("详情已刷新");
+            } catch (error) {
+                message.error("刷新失败");
+            } finally {
+                setDetailLoading(false);
             }
-        } catch (error) {
-            message.error("刷新失败");
-        } finally {
-            setDetailLoading(false);
-        }
+        });
     }, [selectedCpu]);
 
-    const handleRefreshAll = useCallback(async () => {
+    const handleRefreshAll = useCallback(() => {
         setRefreshing(true);
-        try {
-            await CommandUtil.submitCommand("allCpusInfo", {});
+        CommandUtil.submitCommand("allCpusInfo", {}, () => {
             message.info("已请求更新所有 CPU 信息");
-        } finally {
-            setTimeout(() => setRefreshing(false), 2000);
-        }
+        });
+        setTimeout(() => setRefreshing(false), 2000);
     }, []);
 
     const handleShowInfo = useCallback((itemStack, dbItem) => {

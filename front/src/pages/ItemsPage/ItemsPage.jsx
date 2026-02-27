@@ -102,7 +102,9 @@ export default function ItemsPage() {
             .then(async resp => {
                 if (resp.status === 200) {
                     const data = await resp.json();
-                    setCpus(Array.isArray(data) ? data : []);
+                    // 支持对象格式和数组格式
+                    const cpusArray = Array.isArray(data) ? data : Object.values(data || {});
+                    setCpus(cpusArray);
                 }
             })
             .finally(() => setLoadingCpus(false));
@@ -170,17 +172,11 @@ export default function ItemsPage() {
     const handleRefreshAllItems = useCallback(() => {
         setRefreshing(true);
         setRefreshProgress(null);
-        httpUtil.put(httpUtil.path.task, {
-            "method": "refreshStorage",
-            "data": { 
-                batchSize: 500,
-                maxItems: 20000
-            }
-        }).then(() => {
+        CommandUtil.submitCommand("refreshStorage", { 
+            batchSize: 500,
+            maxItems: 20000
+        }, () => {
             message.info("已发送搜寻所有物品请求，请等待数据加载...");
-        }).catch(() => {
-            message.error("请求失败");
-            setRefreshing(false);
         });
     }, []);
 
@@ -188,18 +184,12 @@ export default function ItemsPage() {
     const handleRefreshCraftableItems = useCallback(() => {
         setRefreshing(true);
         setRefreshProgress(null);
-        httpUtil.put(httpUtil.path.task, {
-            "method": "refreshStorage",
-            "data": { 
-                isCraftable: true,
-                batchSize: 500,
-                maxItems: 10000
-            }
-        }).then(() => {
+        CommandUtil.submitCommand("refreshStorage", { 
+            isCraftable: true,
+            batchSize: 500,
+            maxItems: 10000
+        }, () => {
             message.info("已发送搜寻可制造物品请求，请等待数据加载...");
-        }).catch(() => {
-            message.error("请求失败");
-            setRefreshing(false);
         });
     }, []);
 
