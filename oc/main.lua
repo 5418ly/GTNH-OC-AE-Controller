@@ -117,11 +117,6 @@ function tasks.refreshStorage(data)
             
             -- 让出 CPU，避免卡死
             os.sleep(ITEMS_BATCH_DELAY)
-            
-            -- 手动触发垃圾回收
-            if batchIndex % 5 == 0 then
-                collectgarbage("collect")
-            end
         end
     end
     
@@ -130,9 +125,6 @@ function tasks.refreshStorage(data)
         batchIndex = batchIndex + 1
         sendBatch(config.path.items, batch, batchIndex, totalBatches)
     end
-    
-    -- 强制垃圾回收
-    collectgarbage("collect")
     
     return "物品信息已更新", {count = processedCount, batches = batchIndex}
 end
@@ -447,9 +439,6 @@ while true do
     if result ~= http.TASK.NO_TASK then
         print(result, message)
     end
-    
-    -- 定期垃圾回收
-    collectgarbage("step")
     
     -- 休眠
     os.sleep(config.sleep or 1)
