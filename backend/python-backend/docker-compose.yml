@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  gtnh-oc-ae-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gtnh-oc-ae-controller:latest
+    container_name: gtnh-oc-ae-controller
+    restart: unless-stopped
+    ports:
+      - "60081:60081"
+    environment:
+      - TOKEN=${TOKEN:-123456}
+      - PORT=60081
+      - DATA_DIR=/app/data
+    volumes:
+      # 持久化数据存储
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:60081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
