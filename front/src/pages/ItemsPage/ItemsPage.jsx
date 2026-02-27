@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Card, Input, Button, List, Typography, Space, Modal, InputNumber, message, Form, Spin, Empty, Select, Descriptions, Tag, Tooltip } from 'antd';
-import { SearchOutlined, ClearOutlined, ReloadOutlined, DeleteOutlined, CloudSyncOutlined, InfoCircleOutlined, CopyOutlined, RocketOutlined } from '@ant-design/icons';
+import { Card, Input, Button, List, Typography, Space, Modal, InputNumber, message, Form, Spin, Empty, Select, Descriptions, Tag, Tooltip, Progress, Statistic, Row, Col, Alert } from 'antd';
+import { SearchOutlined, ClearOutlined, ReloadOutlined, DeleteOutlined, CloudSyncOutlined, InfoCircleOutlined, CopyOutlined, RocketOutlined, DatabaseOutlined, SyncOutlined } from '@ant-design/icons';
 import ItemStack from '../../components/itemStack/ItemStack';
 import httpUtil from '../../HttpUtil';
 import CommandUtil from '../../commons/CommandUtil';
@@ -33,6 +33,19 @@ export default function ItemsPage() {
         label: '',
         damage: ''
     });
+    
+    // Loading and progress state
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshProgress, setRefreshProgress] = useState(null);
+
+    // Statistics
+    const stats = useMemo(() => {
+        const total = items.length;
+        const craftable = items.filter(i => i.isCraftable).length;
+        const stored = items.filter(i => i.size > 0).length;
+        const totalItems = items.reduce((sum, i) => sum + (i.size || 0), 0);
+        return { total, craftable, stored, totalItems };
+    }, [items]);
 
     // Polling logic
     useEffect(() => {
@@ -47,6 +60,17 @@ export default function ItemsPage() {
                         const r = await response.json();
                         if (r.result) {
                             setItems(r.result);
+                        }
+                        // 检查是否有分批进度信息
+                        if (r.status === 'receiving') {
+                            setRefreshProgress({
+                                batch: r.batch,
+                                totalBatches: r.totalBatches,
+                                accumulatedItems: r.accumulatedItems
+                            });
+                        } else {
+                            setRefreshProgress(null);
+                            setRefreshing(false);
                         }
                         setLastModified(response.headers.get("last-modified"));
                     }
@@ -78,7 +102,7 @@ export default function ItemsPage() {
             .then(async resp => {
                 if (resp.status === 200) {
                     const data = await resp.json();
-                    setCpus(data);
+                    setCpus(Array.isArray(data) ? data : []);
                 }
             })
             .finally(() => setLoadingCpus(false));
@@ -88,7 +112,7 @@ export default function ItemsPage() {
         if (!itemStack || !itemStack.isCraftable) return;
         setSelectedItem(itemStack);
         setCraftAmount(1);
-        setSelectedCpu(null); // Reset selection, let user choose "Auto"
+        setSelectedCpu(null);
         fetchCpus();
         setCraftModalVisible(true);
     }, [fetchCpus]);
@@ -142,14 +166,42 @@ export default function ItemsPage() {
         });
     };
 
-    const handleRefreshStorage = () => {
+    // 刷新所有物品（不仅是可合成的）
+    const handleRefreshAllItems = useCallback(() => {
+        setRefreshing(true);
+        setRefreshProgress(null);
         httpUtil.put(httpUtil.path.task, {
             "method": "refreshStorage",
-            "data": { isCraftable: true }
+            "data": { 
+                batchSize: 500,
+                maxItems: 20000
+            }
         }).then(() => {
-            message.info("已发送搜寻可制造物品请求");
+            message.info("已发送搜寻所有物品请求，请等待数据加载...");
+        }).catch(() => {
+            message.error("请求失败");
+            setRefreshing(false);
         });
-    };
+    }, []);
+
+    // 只刷新可合成物品
+    const handleRefreshCraftableItems = useCallback(() => {
+        setRefreshing(true);
+        setRefreshProgress(null);
+        httpUtil.put(httpUtil.path.task, {
+            "method": "refreshStorage",
+            "data": { 
+                isCraftable: true,
+                batchSize: 500,
+                maxItems: 10000
+            }
+        }).then(() => {
+            message.info("已发送搜寻可制造物品请求，请等待数据加载...");
+        }).catch(() => {
+            message.error("请求失败");
+            setRefreshing(false);
+        });
+    }, []);
 
     const onSearch = (values) => {
         setFilters(values);
@@ -162,11 +214,84 @@ export default function ItemsPage() {
 
     return (
         <Card style={{ minHeight: '100%' }}>
+            {/* Statistics */}
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+                <Col span={6}>
+                    <Statistic 
+                        title="物品种类" 
+                        value={stats.total} 
+                        prefix={<DatabaseOutlined />}
+                        suffix="种"
+                    />
+                </Col>
+                <Col span={6}>
+                    <Statistic 
+                        title="可合成" 
+                        value={stats.craftable} 
+                        prefix={<RocketOutlined />}
+                        valueStyle={{ color: '#3f8600' }}
+                    />
+                </Col>
+                <Col span={6}>
+                    <Statistic 
+                        title="有库存" 
+                        value={stats.stored} 
+                        prefix={<DatabaseOutlined />}
+                        valueStyle={{ color: '#1890ff' }}
+                    />
+                </Col>
+                <Col span={6}>
+                    <Statistic 
+                        title="总物品数" 
+                        value={stats.totalItems} 
+                        prefix={<DatabaseOutlined />}
+                    />
+                </Col>
+            </Row>
+
+            {/* Progress indicator */}
+            {refreshing && refreshProgress && (
+                <Alert 
+                    type="info" 
+                    style={{ marginBottom: 16 }}
+                    message={
+                        <Space>
+                            <SyncOutlined spin />
+                            <span>正在接收数据...</span>
+                            <Progress 
+                                percent={Math.round((refreshProgress.batch / refreshProgress.totalBatches) * 100)} 
+                                size="small" 
+                                style={{ width: 200 }}
+                            />
+                            <span>({refreshProgress.accumulatedItems} 物品)</span>
+                        </Space>
+                    }
+                />
+            )}
+
+            {/* Action buttons */}
             <Space style={{ marginBottom: 16, flexWrap: 'wrap' }}>
-                <Button danger icon={<DeleteOutlined />} onClick={handleClearItems}>清理所有物品</Button>
-                <Button type="primary" icon={<CloudSyncOutlined />} onClick={handleRefreshStorage}>搜寻可制造物品</Button>
+                <Button 
+                    type="primary" 
+                    icon={<CloudSyncOutlined />} 
+                    onClick={handleRefreshAllItems}
+                    loading={refreshing}
+                >
+                    搜寻所有物品
+                </Button>
+                <Button 
+                    icon={<RocketOutlined />} 
+                    onClick={handleRefreshCraftableItems}
+                    loading={refreshing}
+                >
+                    搜寻可制造物品
+                </Button>
+                <Button danger icon={<DeleteOutlined />} onClick={handleClearItems}>
+                    清理缓存
+                </Button>
             </Space>
 
+            {/* Search form */}
             <Form form={searchForm} layout="inline" onFinish={onSearch} style={{ marginBottom: 16 }}>
                 <Form.Item name="name" label="类型 (ID)">
                     <Input placeholder="输入 ID" allowClear />
@@ -185,29 +310,33 @@ export default function ItemsPage() {
                 </Form.Item>
             </Form>
 
-            <List
-                grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4, xl: 5, xxl: 6 }}
-                dataSource={filteredItems}
-                pagination={{
-                    position: 'bottom',
-                    align: 'center',
-                    showSizeChanger: true,
-                    defaultPageSize: 24,
-                    pageSizeOptions: ['24', '48', '96', '192']
-                }}
-                locale={{ emptyText: <Empty description="暂无物品数据" /> }}
-                renderItem={(item) => (
-                    <List.Item>
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <ItemStack 
-                                itemStack={item} 
-                                onCraftRequest={handleCraftRequest} 
-                                onShowInfo={handleShowInfo}
-                            />
-                        </div>
-                    </List.Item>
-                )}
-            />
+            {/* Items list */}
+            <Spin spinning={refreshing && !refreshProgress} tip="正在获取物品信息...">
+                <List
+                    grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 4, xl: 5, xxl: 6 }}
+                    dataSource={filteredItems}
+                    pagination={{
+                        position: 'bottom',
+                        align: 'center',
+                        showSizeChanger: true,
+                        defaultPageSize: 24,
+                        pageSizeOptions: ['24', '48', '96', '192'],
+                        showTotal: (total) => `共 ${total} 种物品`
+                    }}
+                    locale={{ emptyText: <Empty description="暂无物品数据，请点击搜寻按钮获取" /> }}
+                    renderItem={(item) => (
+                        <List.Item>
+                            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <ItemStack 
+                                    itemStack={item} 
+                                    onCraftRequest={handleCraftRequest} 
+                                    onShowInfo={handleShowInfo}
+                                />
+                            </div>
+                        </List.Item>
+                    )}
+                />
+            </Spin>
 
             {/* Craft Modal */}
             <Modal

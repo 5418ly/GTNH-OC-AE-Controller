@@ -12,6 +12,48 @@ local monitors = {}
 -- 配置
 local CPU_MONITOR_INTERVAL = 2  -- CPU 监控间隔（秒）
 local TASK_CHECK_INTERVAL = 1   -- 任务检查间隔（秒）
+local ITEMS_BATCH_SIZE = 500    -- 物品分批处理大小
+local ITEMS_BATCH_DELAY = 0.1   -- 批次之间的延迟（秒）
+
+-- ============================================
+-- 辅助函数
+-- ============================================
+
+-- 分批发送数据到后端
+local function sendBatch(endpoint, batch, batchIndex, totalBatches)
+    local payload = {
+        result = batch,
+        batch = batchIndex,
+        totalBatches = totalBatches
+    }
+    http.put(endpoint, {}, payload)
+end
+
+-- 安全获取物品（带内存检查）
+local function safeGetItems(filter, maxItems)
+    maxItems = maxItems or 10000  -- 默认最大物品数
+    
+    -- 先尝试获取物品
+    local ok, items = pcall(function() return me.getItemsInNetwork(filter) end)
+    if not ok then
+        return nil, "获取物品失败: " .. tostring(items)
+    end
+    
+    if not items then
+        return {}, nil
+    end
+    
+    -- 检查数量
+    local count = 0
+    for _ in pairs(items) do
+        count = count + 1
+        if count > maxItems then
+            return nil, "物品数量超过限制 (" .. maxItems .. ")"
+        end
+    end
+    
+    return items, nil
+end
 
 -- ============================================
 -- 任务处理函数
@@ -19,11 +61,44 @@ local TASK_CHECK_INTERVAL = 1   -- 任务检查间隔（秒）
 
 function tasks.refreshStorage(data)
     -- data 是物品过滤表
-    local item = me.getItemsInNetwork(data)
-    local result = {}
-
-    for _, j in pairs(item) do
-        table.insert(result, {
+    -- 支持的参数:
+    --   data.isCraftable: 是否只获取可合成物品 (true/false/nil)
+    --   data.batchSize: 每批处理的物品数量 (默认 500)
+    --   data.maxItems: 最大物品数量限制 (默认 10000)
+    
+    local filter = data or {}
+    local batchSize = filter.batchSize or ITEMS_BATCH_SIZE
+    local maxItems = filter.maxItems or 10000
+    
+    -- 移除非过滤参数
+    filter.batchSize = nil
+    filter.maxItems = nil
+    
+    local items, err = safeGetItems(filter, maxItems)
+    if err then
+        return "错误: " .. err, nil
+    end
+    
+    if not items or #items == 0 then
+        http.put(config.path.items, {}, {result = {}, batch = 1, totalBatches = 1})
+        return "没有找到物品", {count = 0}
+    end
+    
+    -- 计算总批次数
+    local totalCount = 0
+    for _ in pairs(items) do
+        totalCount = totalCount + 1
+    end
+    
+    local totalBatches = math.ceil(totalCount / batchSize)
+    
+    -- 分批处理
+    local batch = {}
+    local batchIndex = 0
+    local processedCount = 0
+    
+    for _, j in pairs(items) do
+        table.insert(batch, {
             name = j.name,
             label = j.label,
             isCraftable = j.isCraftable,
@@ -31,9 +106,78 @@ function tasks.refreshStorage(data)
             size = j.size,
             aspect = j.aspect
         })
+        
+        processedCount = processedCount + 1
+        
+        -- 当批次满了，发送数据
+        if #batch >= batchSize then
+            batchIndex = batchIndex + 1
+            sendBatch(config.path.items, batch, batchIndex, totalBatches)
+            batch = {}
+            
+            -- 让出 CPU，避免卡死
+            os.sleep(ITEMS_BATCH_DELAY)
+            
+            -- 手动触发垃圾回收
+            if batchIndex % 5 == 0 then
+                collectgarbage("collect")
+            end
+        end
     end
+    
+    -- 发送最后一批
+    if #batch > 0 then
+        batchIndex = batchIndex + 1
+        sendBatch(config.path.items, batch, batchIndex, totalBatches)
+    end
+    
+    -- 强制垃圾回收
+    collectgarbage("collect")
+    
+    return "物品信息已更新", {count = processedCount, batches = batchIndex}
+end
 
-    http.put(config.path.items, {}, {result = result})
+-- 增量更新物品（只更新变化的部分）
+function tasks.refreshStorageIncremental(data)
+    -- 增量更新，只获取指定范围的物品
+    -- data.offset: 起始偏移
+    -- data.limit: 数量限制
+    
+    local filter = data.filter or {}
+    local offset = data.offset or 0
+    local limit = data.limit or 500
+    
+    local items, err = safeGetItems(filter, limit + offset + 1000)
+    if err then
+        return "错误: " .. err, nil
+    end
+    
+    local result = {}
+    local count = 0
+    local skipped = 0
+    
+    for _, j in pairs(items) do
+        if skipped >= offset then
+            table.insert(result, {
+                name = j.name,
+                label = j.label,
+                isCraftable = j.isCraftable,
+                damage = j.damage,
+                size = j.size,
+                aspect = j.aspect
+            })
+            count = count + 1
+            if count >= limit then
+                break
+            end
+        else
+            skipped = skipped + 1
+        end
+    end
+    
+    http.put(config.path.items, {}, {result = result, offset = offset, limit = limit})
+    
+    return "增量更新完成", {count = count}
 end
 
 function tasks.refreshFluidStorage(_)
@@ -51,6 +195,7 @@ function tasks.refreshFluidStorage(_)
     end
 
     http.put(config.path.fluids, {}, {result = result})
+    return "流体信息已更新", {count = #result}
 end
 
 function tasks.refreshEssentiaStorage(_)
@@ -68,6 +213,7 @@ function tasks.refreshEssentiaStorage(_)
     end
 
     http.put(config.path.essentia, {}, {result = result})
+    return "原质信息已更新", {count = #result}
 end
 
 function tasks.requestItem(data)
@@ -110,10 +256,8 @@ function tasks.simpleCpusInfo(_)
     local list = meCpu.getCpuList(false)
     for _, cpu in pairs(list) do
         if cpu.id ~= nil and cpu.id ~= "" then
-            local _, code = http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-            if code ~= 200 then
-                http.post(config.path.cpu, {}, cpu)
-            end
+            -- 只使用 PUT 更新，不创建新记录
+            http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
         end
     end
     return "CPU 简要信息已更新", {count = #list}
@@ -124,10 +268,8 @@ function tasks.allCpusInfo(_)
     local list = meCpu.getCpuList(true)
     for _, cpu in pairs(list) do
         if cpu.id ~= nil and cpu.id ~= "" then
-            local _, code = http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-            if code ~= 200 then
-                http.post(config.path.cpu, {}, cpu)
-            end
+            -- 只使用 PUT 更新，不创建新记录
+            http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
         end
     end
     return "CPU 详细信息已更新", {count = #list}
@@ -192,23 +334,12 @@ function tasks.cpuMonitor(data)
             
             -- 获取所有 CPU 信息
             local list = meCpu.getCpuList(monitorData.detail)
-            local hasBusy = false
             
             for _, cpu in pairs(list) do
                 if cpu.id ~= nil and cpu.id ~= "" then
-                    -- 总是更新忙碌的 CPU
-                    if cpu.busy then
-                        hasBusy = true
-                        http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-                    else
-                        -- 空闲的 CPU 也更新，但频率可以降低
-                        http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
-                    end
+                    http.put(config.path.cpu .. "/" .. cpu.id, {}, cpu)
                 end
             end
-            
-            -- 如果没有忙碌的 CPU，可以选择停止监控
-            -- 但为了保持数据同步，我们继续监控
         end
     }
     
@@ -270,6 +401,24 @@ function tasks.smartCpuMonitor(data)
 end
 
 -- ============================================
+-- 内存状态
+-- ============================================
+
+function tasks.memoryStatus(_)
+    -- 返回当前内存使用情况
+    local free = computer.freeMemory()
+    local total = computer.totalMemory()
+    local used = total - free
+    
+    return "内存状态", {
+        free = free,
+        total = total,
+        used = used,
+        usedPercent = math.floor(used / total * 100)
+    }
+end
+
+-- ============================================
 -- 主循环
 -- ============================================
 
@@ -282,6 +431,7 @@ tasks.smartCpuMonitor({interval = 2})
 
 print("OC-AE 控制器已启动")
 print("配置: sleep=" .. config.sleep .. "s, baseUrl=" .. config.baseUrl)
+print("内存: " .. math.floor(computer.freeMemory() / 1024) .. "KB / " .. math.floor(computer.totalMemory() / 1024) .. "KB")
 
 while true do
     -- 执行所有监控器
@@ -297,6 +447,9 @@ while true do
     if result ~= http.TASK.NO_TASK then
         print(result, message)
     end
+    
+    -- 定期垃圾回收
+    collectgarbage("step")
     
     -- 休眠
     os.sleep(config.sleep or 1)
