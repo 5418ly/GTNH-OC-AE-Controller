@@ -1,9 +1,16 @@
+-- GTNH-OC-AE-Controller 安装脚本
+-- 仓库: https://github.com/5418ly/GTNH-OC-AE-Controller
+
+local GITHUB_REPO = "5418ly/GTNH-OC-AE-Controller"
+local GITHUB_BRANCH = "master"
+local GITHUB_RAW_BASE = "https://github.com/" .. GITHUB_REPO .. "/raw/refs/heads/" .. GITHUB_BRANCH .. "/oc/"
+
 local NEED_DOWNLOAD = {
-    ["config"] = "https://ocae.smileyik.eu.org/oc/config.lua",
-    ["cpu"] = "https://ocae.smileyik.eu.org/oc/cpu.lua",
-    ["http-method"] = "https://ocae.smileyik.eu.org/oc/http-method.lua",
-    ["json"] = "https://ocae.smileyik.eu.org/oc/json.lua",
-    ["main"] = "https://ocae.smileyik.eu.org/oc/main.lua"
+    ["config"] = GITHUB_RAW_BASE .. "config.lua",
+    ["cpu"] = GITHUB_RAW_BASE .. "cpu.lua",
+    ["http-method"] = GITHUB_RAW_BASE .. "http-method.lua",
+    ["json"] = GITHUB_RAW_BASE .. "json.lua",
+    ["main"] = GITHUB_RAW_BASE .. "main.lua"
 }
 
 local function checkInternetCard()
@@ -37,9 +44,18 @@ if string.find(targetDirectory, "/") ~= 1 then
     targetDirectory = pwd .. "/" .. targetDirectory
 end
 
-print("The program will install to " .. targetDirectory)
+print("============================================")
+print("GTNH-OC-AE-Controller Installer")
+print("Repository: " .. GITHUB_REPO)
+print("Branch: " .. GITHUB_BRANCH)
+print("============================================")
+print("Target directory: " .. targetDirectory)
+print("")
 
 local createdDirs = {}
+local successCount = 0
+local failCount = 0
+
 for filePath, url in pairs(NEED_DOWNLOAD) do
     local targetFile = targetDirectory .. "/" .. filePath .. ".lua"
     local i = string.len(targetFile) - string.find(string.reverse(targetFile), "/")
@@ -48,10 +64,31 @@ for filePath, url in pairs(NEED_DOWNLOAD) do
         os.execute("mkdir " .. parentDir)
         createdDirs[parentDir] = true
     end
-    os.execute("wget " .. url .. " " .. targetFile)
+    
+    print("Downloading: " .. filePath .. ".lua")
+    local result = os.execute("wget " .. url .. " " .. targetFile)
+    if result then
+        successCount = successCount + 1
+    else
+        failCount = failCount + 1
+        print("  [FAILED] Could not download " .. filePath .. ".lua")
+    end
 end
 
+print("")
+print("============================================")
+print("Installation Summary:")
+print("  Success: " .. successCount)
+print("  Failed: " .. failCount)
+print("============================================")
 
-print("create a quick link to /home directory")
-os.execute("echo \"os.execute(\\\"cd '" .. targetDirectory .. "' && ./main.lua\\\")\" > /home/oc-ae.lua")
-print("install finished")
+if failCount == 0 then
+    print("Creating quick link to /home directory...")
+    os.execute("echo \"os.execute(\\\"cd '" .. targetDirectory .. "' && ./main.lua\\\")\" > /home/oc-ae.lua")
+    print("")
+    print("Installation complete!")
+    print("Run './oc-ae.lua' or 'cd " .. targetDirectory .. " && ./main.lua' to start.")
+else
+    print("Installation completed with errors.")
+    print("Please check your internet connection and try again.")
+end
