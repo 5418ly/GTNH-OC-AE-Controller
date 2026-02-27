@@ -563,6 +563,13 @@ http.init(config.baseUrl, tasks)
 log("INIT", "启动 CPU 自动监控...")
 tasks.smartCpuMonitor({interval = 2})
 
+-- 启动时立即发送一次 CPU 信息
+log("INIT", "发送初始 CPU 信息...")
+local initOk, initErr = pcall(function() tasks.simpleCpusInfo({}) end)
+if not initOk then
+    logError("INIT", "发送初始 CPU 信息失败: " .. tostring(initErr))
+end
+
 log("INIT", "OC-AE 控制器已启动")
 log("INIT", "配置: sleep=" .. config.sleep .. "s, baseUrl=" .. config.baseUrl)
 log("INIT", "内存: " .. math.floor(computer.freeMemory() / 1024) .. "KB / " .. math.floor(computer.totalMemory() / 1024) .. "KB")
