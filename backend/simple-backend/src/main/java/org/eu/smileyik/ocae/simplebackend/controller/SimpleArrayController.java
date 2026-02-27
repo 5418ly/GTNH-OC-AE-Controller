@@ -97,42 +97,30 @@ public class SimpleArrayController extends BaseController {
                                    HttpServletResponse response) {
         request = filter(request, TYPE_TOKEN, req.getServletPath());
         
-        // 首先尝试通过索引查找
-        int index = -1;
-        try {
-            int idx = Integer.parseInt(id);
-            if (idx >= 0 && idx < array.size()) {
-                Map<String, Object> existing = array.get(idx);
-                if (existing != null && Objects.equals(String.valueOf(existing.get("id")), id)) {
-                    index = idx;
-                }
-            }
-        } catch (NumberFormatException ignored) {
-            // ID 不是数字，通过 id 字段查找
-        }
-        
-        // 如果通过索引没找到，通过 id 字段查找
-        if (index == -1) {
-            for (int i = array.size() - 1; i >= 0; i--) {
-                Map<String, Object> map = array.get(i);
-                if (map.containsKey("id") && Objects.equals(String.valueOf(map.get("id")), id)) {
-                    index = i;
-                    break;
-                }
-            }
-        }
-        
-        if (index == -1) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            return null;
-        }
-        
         // 确保 request 中有 id 字段
         if (!request.containsKey("id")) {
             request.put("id", id);
         }
         
-        array.set(index, request);
+        // 首先尝试通过 id 字段查找
+        int index = -1;
+        for (int i = 0; i < array.size(); i++) {
+            Map<String, Object> map = array.get(i);
+            if (map.containsKey("id") && Objects.equals(String.valueOf(map.get("id")), id)) {
+                index = i;
+                break;
+            }
+        }
+        
+        // 如果找到了，更新现有记录
+        if (index != -1) {
+            array.set(index, request);
+        } else {
+            // 如果没找到，创建新记录 (upsert 行为)
+            array.add(request);
+            index = array.size() - 1;
+        }
+        
         updateLastModified();
         
         // 更新单个元素的时间戳

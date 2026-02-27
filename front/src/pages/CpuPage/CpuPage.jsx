@@ -43,11 +43,27 @@ function deepEqualCpu(a, b) {
 }
 
 // 智能合并 CPU 列表，只在数据真正变化时返回新数组
+// 同时处理去重逻辑
 function mergeCpus(prevCpus, newCpus) {
     if (!newCpus || newCpus.length === 0) return prevCpus;
     
+    // 对新数据按 id 去重（防止后端有重复数据）
+    const newCpusMap = new Map();
+    for (const cpu of newCpus) {
+        if (cpu && cpu.id) {
+            // 如果已存在同 id 的 CPU，保留信息更完整的那个
+            const existing = newCpusMap.get(cpu.id);
+            if (!existing || (cpu.cpu && cpu.cpu.activeItems && (!existing.cpu || !existing.cpu.activeItems))) {
+                newCpusMap.set(cpu.id, cpu);
+            }
+        }
+    }
+    
+    // 转换为数组
+    const uniqueNewCpus = Array.from(newCpusMap.values());
+    
     let hasChanges = false;
-    const merged = newCpus.map(newCpu => {
+    const merged = uniqueNewCpus.map(newCpu => {
         const oldCpu = prevCpus.find(c => c.id === newCpu.id);
         
         if (!oldCpu) {
@@ -71,7 +87,7 @@ function mergeCpus(prevCpus, newCpus) {
     });
     
     // 检查是否有删除的 CPU
-    if (prevCpus.length !== newCpus.length) {
+    if (prevCpus.length !== uniqueNewCpus.length) {
         hasChanges = true;
     }
     
