@@ -37,15 +37,20 @@ public class SimpleArrayController extends BaseController {
     @GetMapping
     @ResponseBody
     public List<Map<String, Object>> get(HttpServletRequest req, HttpServletResponse resp) {
-        long timestamp = req.getDateHeader("If-Modified-Since");
-        if (lastModified <= timestamp) {
-            resp.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
-            return null;
+        System.out.println("[SimpleArrayController] GET request for " + getFileName() + ", array size: " + array.size());
+        
+        // 打印数组内容摘要
+        for (int i = 0; i < Math.min(3, array.size()); i++) {
+            Map<String, Object> item = array.get(i);
+            System.out.println("[SimpleArrayController] Item " + i + ": id=" + item.get("id") + ", busy=" + item.get("busy"));
         }
-
-        resp.setDateHeader("Last-Modified", lastModified + 1000);
-        // 添加缓存控制头
-        resp.setHeader("Cache-Control", "no-cache, must-revalidate");
+        
+        // 暂时禁用缓存，总是返回数据
+        resp.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        resp.setHeader("Pragma", "no-cache");
+        resp.setDateHeader("Expires", 0);
+        
+        System.out.println("[SimpleArrayController] Returning array with " + array.size() + " items");
         return array;
     }
 
@@ -95,6 +100,9 @@ public class SimpleArrayController extends BaseController {
                                    @RequestBody Map<String, Object> request,
                                    HttpServletRequest req,
                                    HttpServletResponse response) {
+        System.out.println("[SimpleArrayController] PUT request for " + getFileName() + "/" + id);
+        System.out.println("[SimpleArrayController] Request body: id=" + request.get("id") + ", busy=" + request.get("busy"));
+        
         request = filter(request, TYPE_TOKEN, req.getServletPath());
         
         // 确保 request 中有 id 字段
@@ -114,9 +122,11 @@ public class SimpleArrayController extends BaseController {
         
         // 如果找到了，更新现有记录
         if (index != -1) {
+            System.out.println("[SimpleArrayController] Updating existing CPU at index " + index);
             array.set(index, request);
         } else {
             // 如果没找到，创建新记录 (upsert 行为)
+            System.out.println("[SimpleArrayController] Creating new CPU, current array size: " + array.size());
             array.add(request);
             index = array.size() - 1;
         }
@@ -126,6 +136,11 @@ public class SimpleArrayController extends BaseController {
         // 更新单个元素的时间戳
         String elementId = String.valueOf(request.get("id"));
         elementLastModified.put(elementId, System.currentTimeMillis());
+        
+        System.out.println("[SimpleArrayController] After PUT, array size: " + array.size());
+        
+        // 保存到文件
+        store();
         
         return array.get(index);
     }
@@ -207,10 +222,12 @@ public class SimpleArrayController extends BaseController {
 
     @Override
     protected void onLoad(File file) {
+        System.out.println("[SimpleArrayController] Loading from file: " + file.getAbsolutePath());
         try (FileReader reader = new FileReader(file)) {
             List<Map<String, Object>> loaded = GSON.fromJson(reader, new TypeToken<ArrayList<Map<String, Object>>>() {}.getType());
             if (loaded != null) {
                 array = loaded;
+                System.out.println("[SimpleArrayController] Loaded " + array.size() + " items from file");
                 // 初始化所有元素的时间戳
                 for (Map<String, Object> item : array) {
                     if (item.containsKey("id")) {
@@ -220,8 +237,10 @@ public class SimpleArrayController extends BaseController {
             }
         } catch (FileNotFoundException e) {
             // 文件不存在，使用空数组
+            System.out.println("[SimpleArrayController] File not found, using empty array");
             array = new ArrayList<>();
         } catch (IOException e) {
+            System.out.println("[SimpleArrayController] Error loading file: " + e.getMessage());
             e.printStackTrace();
         }
     }

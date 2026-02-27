@@ -53,14 +53,25 @@ public class SimpleObjectController extends BaseController {
     @GetMapping
     @ResponseBody
     public Map<String, Object> get(HttpServletRequest req, HttpServletResponse resp) {
-        long timestamp = req.getDateHeader("If-Modified-Since");
-        if (lastModified < timestamp) {
-            resp.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
-            return null;
+        System.out.println("[SimpleObjectController] GET request for " + getFileName());
+        
+        // 暂时禁用缓存，总是返回数据
+        resp.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        resp.setHeader("Pragma", "no-cache");
+        resp.setDateHeader("Expires", 0);
+        
+        // 打印 object 内容摘要
+        if (object.containsKey("result")) {
+            Object result = object.get("result");
+            if (result instanceof List) {
+                System.out.println("[SimpleObjectController] Returning object with result list size: " + ((List<?>) result).size());
+            } else {
+                System.out.println("[SimpleObjectController] Returning object with result: " + result);
+            }
+        } else {
+            System.out.println("[SimpleObjectController] Returning object with keys: " + object.keySet());
         }
-
-        resp.setDateHeader("Last-Modified", lastModified + 1000);
-        resp.setHeader("Cache-Control", "no-cache, must-revalidate");
+        
         return object;
     }
 
